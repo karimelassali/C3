@@ -1,37 +1,40 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import PickImag from "../../components/pickImage";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
-    acceptFriendRequest,
-    checkIfUserLiked,
-    deletePost,
-    getCurrentUserProfile,
-    getFriendCount,
-    getFriends,
-    getPendingFriendRequests,
-    getPostCommentCount,
-    getPostLikes,
-    getUserPosts,
-    likePost,
-    rejectFriendRequest,
-    signOut,
-    unlikePost,
-    updateUserProfile,
+  acceptFriendRequest,
+  checkIfUserLiked,
+  deletePost,
+  getCurrentUserProfile,
+  getFriendCount,
+  getFriends,
+  getPendingFriendRequests,
+  getPostCommentCount,
+  getPostLikes,
+  getUserPosts,
+  likePost,
+  rejectFriendRequest,
+  signOut,
+  unlikePost,
+  updateUserProfile,
+  uploadAvatar
 } from "../../lib/supabase";
 
 // const { } = Dimensions.get("window");
@@ -90,6 +93,7 @@ export default function ProfileScreen() {
     full_name: "",
     bio: "",
   });
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // Friends and friend requests
   const [friends, setFriends] = useState<FriendUser[]>([]);
@@ -104,7 +108,7 @@ export default function ProfileScreen() {
     try {
       const lastUpdate = await AsyncStorage.getItem(STORAGE_KEYS.LAST_UPDATE);
       if (!lastUpdate) return false;
-      
+
       const lastUpdateTime = parseInt(lastUpdate);
       const now = Date.now();
       return (now - lastUpdateTime) < CACHE_DURATION;
@@ -173,6 +177,7 @@ export default function ProfileScreen() {
 
         if (cachedUser) {
           setUser(cachedUser);
+          setAvatarUrl(cachedUser.avatar_url || null);
           setPosts(cachedPosts || []);
           setFriendCount(cachedFriendCount || 0);
           setPendingRequestCount(cachedPendingCount || 0);
@@ -191,7 +196,8 @@ export default function ProfileScreen() {
 
       if (userData) {
         setUser(userData);
-        
+        setAvatarUrl(userData.avatar_url || null);
+
         // Save user data to cache
         await saveToCache(userData, STORAGE_KEYS.USER_PROFILE);
 
@@ -255,7 +261,7 @@ export default function ProfileScreen() {
       );
 
       setPosts(enhancedPosts);
-      
+
       // Save posts to cache
       await saveToCache(enhancedPosts, STORAGE_KEYS.USER_POSTS);
     } catch (error) {
@@ -368,15 +374,15 @@ export default function ProfileScreen() {
       const updatedPosts = posts.map((p) =>
         p.id === postId
           ? {
-              ...p,
-              likes_count: p.is_liked ? (p.likes_count || 1) - 1 : (p.likes_count || 0) + 1,
-              is_liked: !p.is_liked,
-            }
+            ...p,
+            likes_count: p.is_liked ? (p.likes_count || 1) - 1 : (p.likes_count || 0) + 1,
+            is_liked: !p.is_liked,
+          }
           : p
       );
 
       setPosts(updatedPosts);
-      
+
       // Update cached posts
       await saveToCache(updatedPosts, STORAGE_KEYS.USER_POSTS);
     } catch (error) {
@@ -608,6 +614,23 @@ export default function ProfileScreen() {
     );
   }
 
+ const handleAvatarUrl = async (uri: string) => {
+  // Show the local preview immediately so the app feels fast
+  setAvatarUrl(uri);
+  
+  // Actually upload to Supabase
+  const { data: publicUrl, error } = await uploadAvatar(uri);
+  
+  if (error) {
+    Alert.alert("Error", "Failed to upload profile picture");
+    return;
+  }
+  
+  if (publicUrl) {
+    // Save the PUBLIC internet link to your user profile
+    await updateUserProfile({ avatar_url: publicUrl });
+  }
+}
   return (
     <SafeAreaView
       style={{ backgroundColor: colors.background }}
@@ -639,22 +662,50 @@ export default function ProfileScreen() {
         {/* Profile Header - Minimalistic */}
         <View style={{ backgroundColor: colors.surface }} className="p-6">
           <View className="items-center mb-6">
-            <View className="w-24 h-24 bg-blue-500 rounded-full mb-4 flex items-center justify-center shadow-lg">
-              <Text className="text-white font-bold text-3xl">
-                {user.username?.charAt(0).toUpperCase() || "U"}
+            <PickImag onImageSelected={handleAvatarUrl}>
+              <View 
+                style={{ borderColor: colors.border, backgroundColor: colors.surface }} 
+                className="w-28 h-28 rounded-full mb-4 flex items-center justify-center shadow-lg border-4 overflow-hidden"
+              >
+                {avatarUrl ? (
+                  <Image 
+                    source={{ uri: avatarUrl }} 
+                    className="w-full h-full"
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text className="text-blue-500 font-bold text-4xl">
+                    {user.username?.charAt(0).toUpperCase() || "U"}
+                  </Text>
+                )}
+                
+                {/* Visual hint that it's clickable */}
+                <View className="absolute bottom-1 right-1 bg-blue-500 p-1.5 rounded-full border-2 border-white shadow-sm">
+                  <Ionicons name="camera" size={14} color="white" />
+                </View>
+              </View>
+            </PickImag>
+
+            {/* User Info */}
+            <View className="items-center">
+              <Text style={{ color: colors.text }} className="text-2xl font-bold mb-1">
+                {user.full_name || "No Name Set"}
               </Text>
+              <View className="bg-blue-500/10 px-3 py-1 rounded-full mb-3">
+                <Text className="text-blue-500 font-semibold text-sm">
+                  @{user.username}
+                </Text>
+              </View>
+              
+              {user.bio && (
+                <Text 
+                  style={{ color: colors.textSecondary }} 
+                  className="text-center text-base leading-6 px-4 max-w-xs"
+                >
+                  {user.bio}
+                </Text>
+              )}
             </View>
-            <Text style={{ color: colors.text }} className="text-2xl font-bold mb-1">
-              {user.full_name || "No Name Set"}
-            </Text>
-            <Text style={{ color: colors.textSecondary }} className="text-base mb-3">
-              @{user.username}
-            </Text>
-            {user.bio && (
-              <Text style={{ color: colors.textSecondary }} className="text-center text-sm leading-5 max-w-xs">
-                {user.bio}
-              </Text>
-            )}
           </View>
 
           {/* Stats Row - Simplified */}

@@ -41,6 +41,7 @@ interface Post {
     username: string;
     full_name: string;
     avatar_url?: string;
+    verified: boolean;
   } | null;
   likes_count?: number;
   is_liked?: boolean;
@@ -53,6 +54,7 @@ interface UserProfile {
   full_name: string;
   bio?: string;
   avatar_url?: string;
+  verified: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -144,7 +146,7 @@ export default function FeedScreen() {
     } finally {
       setCheckingNewPosts(false);
     }
-  }, [lastPostId, checkingNewPosts]);
+  }, [lastPostId]);
 
   // Refresh posts when screen comes into focus (e.g., when returning from profile)
   useFocusEffect(
@@ -461,8 +463,10 @@ export default function FeedScreen() {
             <Text className="text-white font-bold text-lg">
               {item.profiles?.username?.charAt(0).toUpperCase() || "U"}
             </Text>
+            {item.profiles.verified}
           </View>
           <View className="flex-1">
+           <View className="flex-row items-center">
             <Text
               style={{ color: colors.text }}
               className="font-semibold text-base">
@@ -470,6 +474,10 @@ export default function FeedScreen() {
                 item.profiles?.username ||
                 "Unknown User"}
             </Text>
+            {item.profiles?.verified && (
+              <Ionicons name="checkmark-circle" size={16} color="#3b82f6" />
+            )}
+           </View>
             <Text style={{ color: colors.textSecondary }} className="text-sm">
               {formatDate(item.created_at)}
             </Text>
@@ -646,6 +654,9 @@ export default function FeedScreen() {
           <View className="w-12 h-12 bg-blue-500 rounded-full mr-3 flex items-center justify-center shadow-sm">
             <Text className="text-white font-bold text-lg">
               {currentUser?.username?.charAt(0).toUpperCase() || "U"}
+              {currentUser?.verified && (
+                <Ionicons name="checkmark-circle" size={16} color="#000000ff" />
+              )}
             </Text>
           </View>
           <View className="flex-1">

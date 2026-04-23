@@ -1,9 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system/legacy';
 
-const supabaseUrl = "https://ewsojaipfkuekybwjmoe.supabase.co";
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3c29qYWlwZmt1ZWt5YndqbW9lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0Nzc2NTUsImV4cCI6MjA2NjA1MzY1NX0.3fKMgkaJgWvA-deSiTV9VKubBus8-yBrwrAun-ud52Q";
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -48,6 +50,12 @@ export const signUp = async (
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          username,
+          full_name: username,
+        },
+      },
     });
 
     if (authError) {
@@ -305,7 +313,7 @@ export const getPosts = async () => {
     // Fetch profiles separately
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, username, full_name, avatar_url")
+      .select("id, username, full_name, avatar_url, verified")
       .in("id", userIds);
 
     if (profilesError) {
@@ -423,6 +431,35 @@ export const updateUserProfile = async (updates: {
   }
 };
 
+//Upload avatar
+export const uploadAvatar = async (uri: string) => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+    // 1. Get the base64 string of the image using Expo FileSystem
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: 'base64',
+    });
+    // 2. Convert base64 to ArrayBuffer
+    const filePath = `${user.id}/${Date.now()}.jpg`;
+    const contentType = 'image/jpeg';
+    // 3. Upload using the decoded ArrayBuffer
+    const { data, error } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, decode(base64), { 
+        contentType,
+        upsert: true 
+      });
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage
+      .from("avatars")
+      .getPublicUrl(filePath);
+    return { data: publicUrl, error: null };
+  } catch (error) {
+    console.error("Error uploading avatar:", error);
+    return { data: null, error };
+  }
+};
 export const getUserPosts = async (userId: string) => {
   try {
     const { data, error } = await supabase

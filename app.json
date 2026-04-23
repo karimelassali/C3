@@ -7,7 +7,7 @@
     "icon": "./assets/images/logo.png",
     "scheme": "whispr",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.raiyan2002.whispr"
@@ -46,11 +46,9 @@
         }
       ]
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
       "router": {},
+      "typedRoutes": true,
       "eas": {
         "projectId": "8d5dbcb2-aa60-4404-9073-3df978a409a2"
       }

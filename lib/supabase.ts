@@ -1,11 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+/**
+ * Sanitizes strings for PostgreSQL by removing null bytes (\u0000)
+ * which can cause the "unsupported Unicode escape sequence" error.
+ */
+const sanitize = (str: any) => {
+  if (typeof str !== 'string') return str;
+  return str.replace(/\0/g, '');
+};
 
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -219,7 +228,7 @@ export const onAuthStateChange = (
 };
 
 // Database helpers
-export const createPost = async (content: string, imageUrl?: string) => {
+export const createPost = async (content: string, imageUrl?: string, mediaType?: string) => {
   try {
     const {
       data: { user },
@@ -233,11 +242,10 @@ export const createPost = async (content: string, imageUrl?: string) => {
       .from("posts")
       .insert([
         {
-          content,
-          image_url: imageUrl,
+          content: sanitize(content),
+          image_url: sanitize(imageUrl),
+          media_type: sanitize(mediaType || (imageUrl ? 'image' : null)),
           user_id: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         },
       ])
       .select();
@@ -414,10 +422,15 @@ export const updateUserProfile = async (updates: {
     if (!user)
       return { data: null, error: { message: "User not authenticated" } };
 
+    const sanitizedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+      acc[key] = sanitize(value);
+      return acc;
+    }, {} as any);
+
     const { data, error } = await supabase
       .from("profiles")
       .update({
-        ...updates,
+        ...sanitizedUpdates,
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id)
@@ -460,6 +473,79 @@ export const uploadAvatar = async (uri: string) => {
     return { data: null, error };
   }
 };
+
+// Helper to handle Windows paths in fetch
+const fixUri = (uri: string) => {
+  if (uri.startsWith('C:') || uri.startsWith('D:')) {
+    return `file:///${uri.replace(/\\/g, '/')}`;
+  }
+  return uri;
+};
+
+//upload post media (image or video)
+export const uploadPostMedia = async (uri: string, mediaType: string = 'image') => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    const fixedUri = fixUri(uri);
+
+    // Determine file extension and content type based on media type
+    const isVideo = mediaType === 'video';
+    const ext = isVideo ? 'mp4' : 'jpg';
+    const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+    const filePath = `${user.id}/${Date.now()}.${ext}`;
+
+    let uploadData;
+    let uploadError;
+
+    if (isVideo) {
+      // For videos: use fetch+blob to avoid loading entire file into memory as base64
+      const response = await fetch(fixedUri);
+      const blob = await response.blob();
+      
+      // Use FileReader for better compatibility in converting Blob to ArrayBuffer
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(blob);
+      });
+      
+      const result = await supabase.storage
+        .from("posts")
+        .upload(filePath, arrayBuffer, { 
+          contentType,
+          upsert: true 
+        });
+      uploadData = result.data;
+      uploadError = result.error;
+    } else {
+      // For images: base64 approach is fine (small files)
+      const base64 = await FileSystem.readAsStringAsync(fixedUri, {
+        encoding: 'base64',
+      });
+      const result = await supabase.storage
+        .from("posts")
+        .upload(filePath, decode(base64), { 
+          contentType,
+          upsert: true 
+        });
+      uploadData = result.data;
+      uploadError = result.error;
+    }
+
+    if (uploadError) throw uploadError;
+    const { data: { publicUrl } } = supabase.storage
+      .from("posts")
+      .getPublicUrl(filePath);
+    return { data: publicUrl, error: null };
+  } catch (error) {
+    console.error("Error uploading post media:", error);
+    return { data: null, error };
+  }
+};
+
 export const getUserPosts = async (userId: string) => {
   try {
     const { data, error } = await supabase

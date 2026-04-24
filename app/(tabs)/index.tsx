@@ -1,17 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Dimensions,
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Image,
+  Pressable,
+  StyleSheet,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
+import YouTubeEmbed from "../../components/YouTubeEmbed";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
   addComment,
@@ -29,10 +36,13 @@ import {
   unlikePost,
 } from "../../lib/supabase";
 
+
+
 interface Post {
   id: string;
   content: string;
   image_url?: string;
+  media_type?: string;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -102,6 +112,8 @@ export default function FeedScreen() {
       avatar_url?: string;
     }[]
   >([]);
+  const [visible, setVisible] = useState(false);
+  const [selectedZoomImage, setSelectedZoomImage] = useState<string | null>(null);
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState("");
@@ -460,10 +472,16 @@ export default function FeedScreen() {
           className="flex-row items-center flex-1"
           onPress={() => router.push(`/user-profile/${item.user_id}`)}>
           <View className="w-12 h-12 bg-blue-500 rounded-full mr-3 flex items-center justify-center shadow-sm">
-            <Text className="text-white font-bold text-lg">
-              {item.profiles?.username?.charAt(0).toUpperCase() || "U"}
-            </Text>
-            {item.profiles.verified}
+            {item.profiles?.avatar_url ? (
+              <Image
+                source={{ uri: item.profiles.avatar_url }}
+                className="w-full h-full rounded-full"
+              />
+            ) : (
+              <Text className="text-white font-bold text-lg">
+                {item.profiles?.username?.charAt(0).toUpperCase() || "U"}
+              </Text>
+            )}
           </View>
           <View className="flex-1">
            <View className="flex-row items-center">
@@ -497,7 +515,30 @@ export default function FeedScreen() {
 
       {/* Post Content */}
       <View className="px-4 pb-4 border-b mb-2 border-gray-400">
+        {
+          item.image_url && item.media_type === 'youtube' ? (
+            <View className="mb-4">
+              <YouTubeEmbed url={item.image_url} height={220} />
+            </View>
+          ) : item.image_url && item.media_type === 'video' ? (
+            <View className="mb-4 overflow-hidden rounded-xl">
+              <FeedVideoPlayer uri={item.image_url} />
+              <View className="absolute top-3 left-3 bg-black/60 px-2 py-1 rounded-lg flex-row items-center">
+                <Ionicons name="videocam" size={14} color="white" />
+                <Text className="text-white text-xs ml-1 font-medium">Video</Text>
+              </View>
+            </View>
+          ) : item.image_url ? (
+            <Pressable onPress={() => { setSelectedZoomImage(item.image_url || null); setVisible(true); }}>
+              <Image
+                source={{ uri: item.image_url }}
+                className="w-full h-64 mb-4 rounded-xl"
+              />
+            </Pressable>
+          ) : null
+        }
         <Text style={{ color: colors.text }} className="text-base leading-6">
+
           {item.content}
         </Text>
       </View>
@@ -653,9 +694,13 @@ export default function FeedScreen() {
         <View className="flex-row items-start">
           <View className="w-12 h-12 bg-blue-500 rounded-full mr-3 flex items-center justify-center shadow-sm">
             <Text className="text-white font-bold text-lg">
-              {currentUser?.username?.charAt(0).toUpperCase() || "U"}
-              {currentUser?.verified && (
-                <Ionicons name="checkmark-circle" size={16} color="#000000ff" />
+              {currentUser?.avatar_url ? (
+                <Image
+                  source={{ uri: currentUser.avatar_url }}
+                  className="w-12 h-12 rounded-full"
+                />
+              ) : (
+                currentUser?.username?.charAt(0).toUpperCase() || "U"
               )}
             </Text>
           </View>
@@ -677,6 +722,7 @@ export default function FeedScreen() {
               <View className="flex-row space-x-4">
                 <TouchableOpacity className="flex-row items-center">
                   <Ionicons name="image" size={20} color={colors.primary} />
+                  
                   <Text
                     style={{ color: colors.primary }}
                     className="ml-1 font-medium">
@@ -943,6 +989,76 @@ export default function FeedScreen() {
           />
         </SafeAreaView>
       </Modal>
+
+      {/* Zoom Modal */}
+      <Modal visible={visible} transparent animationType="fade">
+        <View style={styles.modal}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 40, right: 20, zIndex: 10 }}
+            onPress={() => setVisible(false)}>
+            <Ionicons name="close-circle" size={36} color="white" />
+          </TouchableOpacity>
+          {selectedZoomImage && (
+            <ScrollView
+              maximumZoomScale={5}
+              minimumZoomScale={1}
+              contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+              centerContent
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}>
+              <Image
+                source={{ uri: selectedZoomImage }}
+                style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height * 0.8 }}
+                resizeMode="contain"
+              />
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  thumbnail: {
+    width: 120,
+    height: 120,
+    borderRadius: 10,
+  },
+  modal: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullImage: {
+    width: "100%",
+    height: "100%",
+  },
+});
+
+function FeedVideoPlayer({ uri }: { uri: string }) {
+  const html = `<!DOCTYPE html><html><head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>*{margin:0;padding:0;background:#000;} video{width:100%;height:100%;object-fit:contain;}</style>
+  </head><body>
+    <video src="${uri}" controls playsinline loop style="width:100%;height:256px"></video>
+  </body></html>`;
+
+  return (
+    <WebView
+      source={{ html }}
+      style={{ width: '100%', height: 256 }}
+      javaScriptEnabled
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+      scrollEnabled={false}
+    />
   );
 }

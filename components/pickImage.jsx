@@ -1,12 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
-import { Alert, Button, Image, View } from 'react-native';
+import { Alert } from 'react-native';
 import { TouchableOpacity } from 'react-native';
 
-
-export default function PickImag({ className, avatarUrl, onImageSelected, children }) {
+export default function PickImag({ className, avatarUrl, onImageSelected, mediaTypes, children }) {
     const [image, setImage] = useState(avatarUrl);
-
 
     const pickImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -15,21 +13,29 @@ export default function PickImag({ className, avatarUrl, onImageSelected, childr
             return;
         }
 
+        // Support both images and videos by default
+        const allowedTypes = mediaTypes || ['images', 'videos'];
+
         let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images', 'videos'],
-            allowsEditing: true,
+            mediaTypes: allowedTypes,
+            allowsEditing: allowedTypes.includes('videos') ? false : true,
             aspect: [5, 5],
-            quality: 1,
-
-
+            quality: 0.8,
+            videoMaxDuration: 60,
         });
 
-        console.log(result);
-
         if (!result.canceled) {
-            setImage(result.assets[0].uri);
-            onImageSelected(result.assets[0].uri);
-
+            const asset = result.assets[0];
+            setImage(asset.uri);
+            // Pass full asset info (uri, type, duration, etc.)
+            onImageSelected({
+                uri: asset.uri,
+                type: asset.type || 'image', // 'image' or 'video'
+                duration: asset.duration || 0,
+                width: asset.width,
+                height: asset.height,
+                fileName: asset.fileName,
+            });
         }
     };
 
@@ -38,5 +44,4 @@ export default function PickImag({ className, avatarUrl, onImageSelected, childr
             {children}
         </TouchableOpacity>
     );
-
 }

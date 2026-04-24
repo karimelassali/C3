@@ -71,7 +71,7 @@ export default function UserProfileScreen() {
     if (userId) {
       loadProfileData();
     }
-  });
+  }, [userId]);
 
   const loadProfileData = async () => {
     try {

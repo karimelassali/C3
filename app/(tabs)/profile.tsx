@@ -12,10 +12,15 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Pressable,
+  Dimensions,
+  StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PickImag from "../../components/pickImage";
+import YouTubeEmbed from "../../components/YouTubeEmbed";
+import VideoPlayer from "../../components/VideoPlayer";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
@@ -65,6 +70,7 @@ interface UserPost {
   id: string;
   content: string;
   image_url?: string;
+  media_type?: string;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -102,6 +108,10 @@ export default function ProfileScreen() {
   const [requestsModalVisible, setRequestsModalVisible] = useState(false);
   const [friendCount, setFriendCount] = useState(0);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+  // Media zoom states
+  const [zoomVisible, setZoomVisible] = useState(false);
+  const [selectedZoomImage, setSelectedZoomImage] = useState<string | null>(null);
 
   // Cache management functions
   const isCacheValid = async (): Promise<boolean> => {
@@ -501,9 +511,16 @@ export default function ProfileScreen() {
       <View className="flex-row items-center justify-between p-4">
         <View className="flex-row items-center flex-1">
           <View className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mr-3 flex items-center justify-center">
-            <Text className="text-white font-bold text-lg">
-              {user?.username?.charAt(0).toUpperCase() || "U"}
-            </Text>
+            <Image
+              source={{ uri: user?.avatar_url }}
+              className="w-full h-full rounded-full"
+            />
+            {!user?.avatar_url && (
+              <Text className="text-white font-bold text-lg">
+
+                {user?.username?.charAt(0).toUpperCase() || "U"}
+              </Text>
+            )}
           </View>
           <View className="flex-1">
             <Text style={{ color: colors.text }} className="font-semibold text-base">
@@ -526,28 +543,39 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Post Content - Cleaner */}
+      {/* Post Content - Improved with media support */}
       <View className="px-4 pb-4">
+        {item.image_url && item.media_type === 'youtube' ? (
+          <View className="mb-4">
+            <YouTubeEmbed url={item.image_url} height={200} />
+          </View>
+        ) : item.image_url && item.media_type === 'video' ? (
+          <View className="mb-4 overflow-hidden rounded-xl">
+            <VideoPlayer uri={item.image_url} height={200} />
+            <View className="absolute top-3 left-3 bg-black/60 px-2 py-1 rounded-lg flex-row items-center">
+              <Ionicons name="videocam" size={14} color="white" />
+              <Text className="text-white text-xs ml-1 font-medium">Video</Text>
+            </View>
+          </View>
+        ) : item.image_url ? (
+          <Pressable 
+            onPress={() => { 
+              setSelectedZoomImage(item.image_url!); 
+              setZoomVisible(true); 
+            }}
+          >
+            <Image
+              source={{ uri: item.image_url }}
+              className="w-full h-48 rounded-xl mt-3 mb-3"
+            />
+          </Pressable>
+        ) : null}
+        
         <Text
           style={{ color: colors.text }}
           className="text-base leading-6">
           {item.content}
         </Text>
-        {item.image_url && (
-          <View
-            style={{ backgroundColor: colors.border }}
-            className="w-full h-48 rounded-xl mt-3 overflow-hidden">
-            <View
-              style={{ backgroundColor: colors.border }}
-              className="w-full h-full flex items-center justify-center">
-              <Ionicons
-                name="image-outline"
-                size={40}
-                color={colors.textSecondary}
-              />
-            </View>
-          </View>
-        )}
       </View>
 
       {/* Post Actions - Minimalistic */}
@@ -614,23 +642,25 @@ export default function ProfileScreen() {
     );
   }
 
- const handleAvatarUrl = async (uri: string) => {
-  // Show the local preview immediately so the app feels fast
-  setAvatarUrl(uri);
-  
-  // Actually upload to Supabase
-  const { data: publicUrl, error } = await uploadAvatar(uri);
-  
-  if (error) {
-    Alert.alert("Error", "Failed to upload profile picture");
-    return;
-  }
-  
-  if (publicUrl) {
-    // Save the PUBLIC internet link to your user profile
-    await updateUserProfile({ avatar_url: publicUrl });
-  }
-}
+  const handleAvatarUrl = async (asset: any) => {
+    const uri = asset.uri;
+    // Show the local preview immediately so the app feels fast
+    setAvatarUrl(uri);
+
+    // Actually upload to Supabase
+    const { data: publicUrl, error } = await uploadAvatar(uri);
+
+    if (error) {
+      Alert.alert("Error", "Failed to upload profile picture");
+      return;
+    }
+
+    if (publicUrl) {
+      // Save the PUBLIC internet link to your user profile
+      await updateUserProfile({ avatar_url: publicUrl });
+    }
+  };
+
   return (
     <SafeAreaView
       style={{ backgroundColor: colors.background }}
@@ -662,7 +692,12 @@ export default function ProfileScreen() {
         {/* Profile Header - Minimalistic */}
         <View style={{ backgroundColor: colors.surface }} className="p-6">
           <View className="items-center mb-6">
-            <PickImag onImageSelected={handleAvatarUrl}>
+            <PickImag 
+              onImageSelected={handleAvatarUrl}
+              avatarUrl={avatarUrl}
+              className=""
+              mediaTypes={['images']}
+            >
               <View 
                 style={{ borderColor: colors.border, backgroundColor: colors.surface }} 
                 className="w-28 h-28 rounded-full mb-4 flex items-center justify-center shadow-lg border-4 overflow-hidden"
@@ -722,7 +757,7 @@ export default function ProfileScreen() {
             <View style={{ backgroundColor: colors.border }} className="w-px h-8" />
 
             <TouchableOpacity
-              onPress={loadPendingRequests}
+              onPress={() => router.push("/friend-requests")}
               className="items-center">
               <Text style={{ color: colors.text }} className="text-2xl font-bold">
                 {pendingRequestCount}
@@ -1048,6 +1083,41 @@ export default function ProfileScreen() {
           />
         </SafeAreaView>
       </Modal>
+
+      {/* Zoom Modal */}
+      <Modal visible={zoomVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 40, right: 20, zIndex: 10 }}
+            onPress={() => setZoomVisible(false)}>
+            <Ionicons name="close-circle" size={36} color="white" />
+          </TouchableOpacity>
+          {selectedZoomImage && (
+            <ScrollView
+              maximumZoomScale={5}
+              minimumZoomScale={1}
+              contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+              centerContent
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}>
+              <Image
+                source={{ uri: selectedZoomImage }}
+                style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height * 0.8 }}
+                resizeMode="contain"
+              />
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});

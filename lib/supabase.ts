@@ -337,7 +337,7 @@ export const getPosts = async () => {
 
     // Get post IDs for enhanced data fetching
     const postIds = rawPosts.map((post: any) => post.id);
-    console.log("Post IDs being returned:", postIds);
+    // console.log("Post IDs being returned:", postIds);
 
     // Fetch enhanced data for each post
     const enhancedPosts = await Promise.all(
@@ -387,7 +387,7 @@ export const getPosts = async () => {
       })
     );
 
-    console.log("Returning posts from friends:", enhancedPosts.length);
+   
     return { data: enhancedPosts, error: null };
   } catch (error) {
     console.error("Exception in getPosts:", error);
@@ -449,20 +449,32 @@ export const uploadAvatar = async (uri: string) => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User not authenticated");
-    // 1. Get the base64 string of the image using Expo FileSystem
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64',
+
+    const fixedUri = fixUri(uri);
+    
+    // 1. Get the blob from the URI
+    const response = await fetch(fixedUri);
+    const blob = await response.blob();
+    
+    // 2. Convert blob to ArrayBuffer
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(blob);
     });
-    // 2. Convert base64 to ArrayBuffer
+
     const filePath = `${user.id}/${Date.now()}.jpg`;
     const contentType = 'image/jpeg';
-    // 3. Upload using the decoded ArrayBuffer
+
+    // 3. Upload using the ArrayBuffer
     const { data, error } = await supabase.storage
       .from("avatars")
-      .upload(filePath, decode(base64), { 
+      .upload(filePath, arrayBuffer, { 
         contentType,
         upsert: true 
       });
+
     if (error) throw error;
     const { data: { publicUrl } } = supabase.storage
       .from("avatars")
@@ -499,12 +511,10 @@ export const uploadPostMedia = async (uri: string, mediaType: string = 'image') 
     let uploadData;
     let uploadError;
 
-    if (isVideo) {
-      // For videos: use fetch+blob to avoid loading entire file into memory as base64
+      // Use fetch+blob and FileReader for both images and videos
       const response = await fetch(fixedUri);
       const blob = await response.blob();
       
-      // Use FileReader for better compatibility in converting Blob to ArrayBuffer
       const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as ArrayBuffer);
@@ -520,20 +530,6 @@ export const uploadPostMedia = async (uri: string, mediaType: string = 'image') 
         });
       uploadData = result.data;
       uploadError = result.error;
-    } else {
-      // For images: base64 approach is fine (small files)
-      const base64 = await FileSystem.readAsStringAsync(fixedUri, {
-        encoding: 'base64',
-      });
-      const result = await supabase.storage
-        .from("posts")
-        .upload(filePath, decode(base64), { 
-          contentType,
-          upsert: true 
-        });
-      uploadData = result.data;
-      uploadError = result.error;
-    }
 
     if (uploadError) throw uploadError;
     const { data: { publicUrl } } = supabase.storage
@@ -1030,14 +1026,27 @@ export const getFriendRequestStatus = async (targetUserId: string) => {
   }
 };
 
-export const getFriends = async (userId: string) => {
+export const getFriends = async (userId?: string) => {
   try {
+    let targetUserId = userId;
+
+    if (!targetUserId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("No user ID provided and user not authenticated");
+        return { data: null, error: { message: "User not authenticated" } };
+      }
+      targetUserId = user.id;
+    }
+
     // Get accepted friend requests where this user is involved
     const { data: friendRequests, error: requestsError } = await supabase
       .from("friend_requests")
       .select("sender_id, receiver_id")
       .eq("status", "accepted")
-      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+      .or(`sender_id.eq.${targetUserId},receiver_id.eq.${targetUserId}`);
 
     if (requestsError) {
       console.error("Error getting friend requests:", requestsError);
@@ -1063,7 +1072,7 @@ export const getFriends = async (userId: string) => {
       console.error("Error getting friend profiles:", profilesError);
       return { data: null, error: profilesError };
     }
-
+    console.log("Friend profiles----------------:", profiles);
     return { data: profiles || [], error: null };
   } catch (error) {
     console.error("Exception in getFriends:", error);

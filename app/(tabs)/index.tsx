@@ -19,6 +19,7 @@ import {
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import YouTubeEmbed from "../../components/YouTubeEmbed";
+import VideoPlayer from "../../components/VideoPlayer";
 import { useTheme } from "../../contexts/ThemeContext";
 import {
   addComment,
@@ -522,7 +523,7 @@ export default function FeedScreen() {
             </View>
           ) : item.image_url && item.media_type === 'video' ? (
             <View className="mb-4 overflow-hidden rounded-xl">
-              <FeedVideoPlayer uri={item.image_url} />
+              <VideoPlayer uri={item.image_url} />
               <View className="absolute top-3 left-3 bg-black/60 px-2 py-1 rounded-lg flex-row items-center">
                 <Ionicons name="videocam" size={14} color="white" />
                 <Text className="text-white text-xs ml-1 font-medium">Video</Text>
@@ -629,7 +630,7 @@ export default function FeedScreen() {
             <Ionicons name="search" size={20} color={colors.textSecondary} />
             <TextInput
               style={{ color: colors.text }}
-              className="flex-1 ml-3 text-base"
+              className="flex ml-3 text-base"
               placeholder="Search people..."
               placeholderTextColor={colors.textSecondary}
               value={searchQuery}
@@ -639,6 +640,15 @@ export default function FeedScreen() {
             {searching && (
               <Ionicons name="reload" size={20} color={colors.textSecondary} />
             )}
+          </View>
+          <View className="flex-row items-center gap-4">
+            <TouchableOpacity onPress={() => router.push("/friend-requests")} className="relative">
+              <Ionicons name="people-outline" size={24} color={colors.text} />
+              {/* Note: In a real app we'd fetch this count periodically, for now just showing the icon */}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push("/chat")} className="flex-row items-center">
+              <Ionicons name="chatbubble-outline" size={24} color={colors.text} />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -1042,23 +1052,3 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 });
-
-function FeedVideoPlayer({ uri }: { uri: string }) {
-  const html = `<!DOCTYPE html><html><head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>*{margin:0;padding:0;background:#000;} video{width:100%;height:100%;object-fit:contain;}</style>
-  </head><body>
-    <video src="${uri}" controls playsinline loop style="width:100%;height:256px"></video>
-  </body></html>`;
-
-  return (
-    <WebView
-      source={{ html }}
-      style={{ width: '100%', height: 256 }}
-      javaScriptEnabled
-      allowsInlineMediaPlayback
-      mediaPlaybackRequiresUserAction={false}
-      scrollEnabled={false}
-    />
-  );
-}

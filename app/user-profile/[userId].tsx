@@ -516,6 +516,7 @@ export default function UserProfileScreen() {
           <View className="flex-row">
             {renderFriendButton()}
             <TouchableOpacity
+              onPress={() => router.push(`/chat/${userId}`)}
               style={{ backgroundColor: colors.border }}
               className="px-6 py-3 rounded-xl">
               <Text style={{ color: colors.text }} className="font-semibold">

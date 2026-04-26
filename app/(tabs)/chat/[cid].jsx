@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,14 +11,17 @@ import {
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
+  RefreshControl,
+  ScrollView
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../../../lib/supabase";
+import { supabase, sendMessage, fetchMessages } from "../../../lib/supabase";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { useAuth } from "../../../contexts/AuthContext";
 
 export default function ChatScreen() {
+  const [refreshing, setRefreshing] = useState(false);
   const { cid } = useLocalSearchParams();
   const { colors, isDark } = useTheme();
   const { user: currentUser } = useAuth();
@@ -31,11 +34,43 @@ export default function ChatScreen() {
   
   const flatListRef = useRef(null);
 
-  useEffect(() => {
-    fetchFriendProfile();
-    // In a real app, you would fetch messages here from a 'messages' table
-    stubMessages();
-  }, [cid]);
+    const onRefresh = useCallback(() => {
+    setRefreshing(true);
+
+   fetchMessages(cid);
+   setRefreshing(false);
+  }, []);
+
+useEffect(() => {
+  fetchFriendProfile();
+  
+  // 1. Create an async wrapper to correctly await the data
+  const loadMessages = async () => {
+    const { data, error } = await fetchMessages(cid);
+    if (!error && data) {
+      setMessages(data); // Now 'data' is the actual array of messages
+    }
+  };
+  loadMessages();
+
+  //Realtime
+  const messagesChannel = supabase
+  .channel('messages')
+  .on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "messages" },
+    (payload) => {
+      console.log("New message received:", payload);
+      setMessages((prevMessages) => [...prevMessages, payload.new]);
+    }
+  )
+  .subscribe();
+
+  return () => {
+    supabase.removeChannel(messagesChannel);
+  };
+}, [cid]);
+
 
   const fetchFriendProfile = async () => {
     try {
@@ -55,33 +90,26 @@ export default function ChatScreen() {
     }
   };
 
-  const stubMessages = () => {
-    setMessages([
-      { id: '1', text: "Hey! How's it going?", senderId: cid, time: '10:00 AM' },
-      { id: '2', text: "I'm doing great, working on the new Whispr app features!", senderId: currentUser?.id, time: '10:02 AM' },
-      { id: '3', text: "That looks amazing! Can't wait to see the final version. 🔥", senderId: cid, time: '10:05 AM' },
-      { id: '4', text: "Actually, look at this new chat UI we just built together.", senderId: currentUser?.id, time: '10:06 AM' },
-    ]);
-  };
 
-  const sendMessage = () => {
-    if (!message.trim()) return;
 
-    const newMessage = {
-      id: Date.now().toString(),
-      text: message.trim(),
-      senderId: currentUser?.id,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
+const onSend = async () => {
+  if (!message.trim()) return;
+  // 2. FIX: Only pass 'cid' (the friend) and 'message' (the text)
+  const { error } = await sendMessage(cid, message);
+  
+  if (error) {
+    console.error("Error sending message:", error);
+  } else {
     setMessage("");
-    
-    // Scroll to bottom
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
+    // 3. Refresh the list so the new message shows up
+    const { data } = await fetchMessages(cid);
+    if (data) setMessages(data);
+  }
+  
+  setTimeout(() => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  }, 100);
+};
 
   const renderMessage = ({ item }) => {
     const isMe = item.senderId === currentUser?.id;
@@ -110,14 +138,22 @@ export default function ChatScreen() {
             style={{ color: isMe ? "#FFFFFF" : colors.text }}
             className="text-base"
           >
-            {item.text}
+            {item.content}
           </Text>
           <Text
             style={{ color: isMe ? "rgba(255,255,255,0.7)" : colors.textSecondary }}
             className="text-[10px] mt-1 self-end"
           >
-            {item.time}
+            {item.created_at}
           </Text>
+          {isMe && item.is_read && (
+  <Ionicons name="checkmark-done" size={12} color="rgba(255,255,255,0.7)" className="ml-1" />
+)}
+{
+  isMe && !item.is_read && (
+    <Ionicons name="checkmark" size={12} color="white" className="ml-1" />
+  )
+}
         </View>
       </View>
     );
@@ -132,15 +168,22 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.background }} className="flex-1">
+     <ScrollView
+     style={{ backgroundColor: colors.background }}
+     className="flex-1"
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+    <SafeAreaView  style={{ backgroundColor: colors.background }} >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       
       {/* Header */}
       <View 
         style={{ borderBottomColor: colors.border }}
-        className="flex-row items-center px-4 py-3 border-b"
+        className="flex-row items-center mt-10 px-4 py-3 border-b"
       >
-        <TouchableOpacity onPress={() => router.back()} className="mr-3">
+        <TouchableOpacity onPress={() => router.push("/chat")} className="mr-3">
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         
@@ -216,7 +259,7 @@ export default function ChatScreen() {
           </View>
 
           <TouchableOpacity 
-            onPress={sendMessage}
+            onPress={onSend}
             style={{ 
               backgroundColor: message.trim() ? colors.primary : colors.border,
               padding: 10,
@@ -233,5 +276,6 @@ export default function ChatScreen() {
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </ScrollView>
   );
 }

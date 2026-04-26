@@ -1568,3 +1568,74 @@ export const searchUsers = async (query: string) => {
     return { data: null, error: { message: "Failed to search users" } };
   }
 };
+
+
+//Send messages
+export const sendMessage = async (receiverId: string, content: string) => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    console.log("Sending message to user:", receiverId, "with content:", content);
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        sender_id: user.id,
+        receiver_id: receiverId,
+        content,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error sending message:", error);
+      return { data: null, error };
+    }
+
+    console.log("Successfully sent message:", data);
+    return { data, error: null };
+  } catch (error) {
+    console.error("Exception in sendMessage:", error);
+    return {
+      data: null,
+      error: { message: "Failed to send message" },
+    };
+  }
+};
+
+//Fetch Messages
+export const fetchMessages = async (receiverId: string) => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    console.log("Fetching messages from user:", receiverId);
+
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .or(
+        `and(sender_id.eq.${user.id},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${user.id})`
+      )
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching messages:", error);
+      return { data: null, error };
+    }
+
+    console.log("Successfully fetched messages: for user ", receiverId, data);
+    return { data, error: null };
+  } catch (error) {
+    console.error("Exception in fetchMessages:", error);
+    return {
+      data: null,
+      error: { message: "Failed to fetch messages" },
+    };
+  }
+};
